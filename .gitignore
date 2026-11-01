@@ -1,0 +1,20 @@
+# Raw and downloaded data
+data/*
+
+# R temporary files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Temporary and cache files
+*.tmp
+*.log
+*.cache
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.vscode/
