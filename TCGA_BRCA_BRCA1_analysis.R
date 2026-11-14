@@ -591,4 +591,86 @@ write.table(
   row.names = FALSE
 )
 
+# Differential Gene Expression Analysis (DEG)
+
 library(DESeq2)
+
+?results
+
+d2 <- estimateSizeFactors(d1)
+d3 <- DESeq(d2)
+
+deseq_result <- results(d3, pAdjustMethod = "fdr")
+
+class(deseq_result)
+
+final_deseq_results <- data.frame(deseq_result)
+
+View(final_deseq_results)
+
+write.table(
+  final_deseq_results,
+  "DEG mRNA.txt",
+  quote = F,
+  sep = "\t"
+)
+
+##########################################################################
+
+# Gene Annotation
+
+DEG <- read.table("DEG mRNA.txt", sep = "\t")
+View(DEG)
+
+annot_df <- read.table("annot_df.txt", sep = "\t")
+View(annot_df)
+
+rownames(annot_df) <- annot_df[, 1]
+annot_df <- annot_df[, -1]
+
+colnames(annot_df) <- c("Symbol", "Biotype")
+
+View(annot_df)
+
+# Annotation Function
+
+annot_fx <- function(x) {
+  k <- annot_df[x, 1]
+  return(k)
+}
+
+annot_fx("ENSG00000002834.1") # Example
+
+gene_names <- annot_fx(rownames(DEG))
+
+length(gene_names) == nrow(DEG)
+
+final_result_annot <- cbind(gene_names)
+
+final_result_annot <- cbind(
+  final_result_annot,
+  DEG[1:6]
+)
+
+rownames(final_result_annot) <- rownames(DEG)
+
+colnames(final_result_annot)[1] <- "Symbol"
+
+View(final_result_annot)
+
+# Sort by padj value
+
+final_result_annot <- final_result_annot[
+  order(final_result_annot$padj, decreasing = F),
+]
+
+View(final_result_annot)
+
+# Export Final Results
+
+write.table(
+  final_result_annot,
+  "Final result.txt",
+  quote = F,
+  sep = "\t"
+)
