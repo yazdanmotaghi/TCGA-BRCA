@@ -90,7 +90,9 @@ This small subset is being used to develop and demonstrate the analysis workflow
 
 The R analysis script is available here:
 
-[TCGA_BRCA_BRCA1_analysis_formatted.R](TCGA_BRCA_BRCA1_analysis_formatted.R)
+The script uses the current working directory as the project directory and creates a local `GDCdata` folder for downloaded data. Open the project in RStudio (or set the working directory to the repository folder) before running it.
+
+[TCGA_BRCA_BRCA1_analysis.R](TCGA_BRCA_BRCA1_analysis.R)
 
 ## Current Project Status
 
@@ -122,5 +124,5 @@ Upcoming:
 
 ## Limitations
 
-The current working subset contains only 8 samples (4 tumor and 4 normal) and is intended for workflow development and educational purposes. The small sample size—and the need to account for sample and patient structure—limits the reliability and generalizability of statistical findings. Larger, appropriately structured cohorts and further validation are required before drawing robust biological or clinical conclusions.
+The current working subset contains only 8 samples (4 tumor and 4 normal) and is intended for workflow development and educational purposes. The small sample size—and the presence of multiple aliquots/samples from some patients in this working subset—limits the reliability and generalizability of statistical findings. The current `~SampleType` design does not model patient-level pairing or repeated samples. Therefore, the differential expression output is exploratory and must not be interpreted as a statistically robust result. A larger cohort with a patient-aware design, followed by appropriate validation, is required before drawing biological or clinical conclusions.
 
