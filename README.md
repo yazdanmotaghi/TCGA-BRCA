@@ -91,6 +91,11 @@ TCGA-BRCA/
 │
 └── README.md
 ```
+## Source Code
+
+The complete R analysis script is available here:
+
+[TCGA_BRCA_BRCA1_analysis_formatted.R](TCGA_BRCA_BRCA1_analysis_formatted.R)
 
 ## Current Project Status
 
