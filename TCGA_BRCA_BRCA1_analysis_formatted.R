@@ -15,7 +15,7 @@ library(ggplot2)
 
 
 # 2. Set Working Directory
-setwd("D:/Genetics & Bioinformatics Researchs/TCGA-BRCA RNA Seq Gene=BRCA1_Yazdan Mottaghi")
+setwd("my project directory")
 
 
 ################################################################################
