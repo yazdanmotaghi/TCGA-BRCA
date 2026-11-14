@@ -22,6 +22,7 @@ genomics data from The Cancer Genome Atlas (TCGA-BRCA).
 - edgeR
 - limma
 - ggplot2
+- summarizeexperiment
 - Git & GitHub
 
 ## Project Structure
