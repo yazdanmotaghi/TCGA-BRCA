@@ -110,8 +110,8 @@ write.table(
 
 nrow(Tumor_sample_list)
 
-length(Tumor_sample_list)
-length(Normal_sample_list)
+nrow(Tumor_sample_list)
+nrow(Normal_sample_list)
 
 
 ################################################################################
@@ -242,6 +242,15 @@ annot_df <- annotation[, c("gene_name", "gene_type"), drop = FALSE]
 colnames(annot_df) <- c("SYMBOL", "BioType")
 rownames(annot_df) <- rownames(data)
 
+# Save annotation for the downstream annotation steps.
+write.table(
+  annot_df,
+  file = "annot_df.txt",
+  quote = FALSE,
+  sep = "\t",
+  col.names = NA
+)
+
 
 ################################################################################
 # 18. Explore and Filter Raw Counts
@@ -254,7 +263,7 @@ colnames(data)
 
 boxplot(data)
 hist(data)
-hist(data, breaks = 1000000, xlim = c(0, 50))
+hist(data, breaks = 50, xlim = c(0, 50))
 
 data_filtered <- data[which(rowSums(data) > 10), ]
 
@@ -470,7 +479,8 @@ write.table(
   "Metadata.txt",
   quote = FALSE,
   sep = "\t",
-  row.names = FALSE
+  row.names = TRUE,
+  col.names = NA
 )
 
 #######################################################################################
@@ -512,8 +522,20 @@ Meta_data <- read.table(
   "Metadata.txt",
   header = TRUE,
   sep = "\t",
-  check.names = FALSE
+  row.names = 1,
+  check.names = FALSE,
+  stringsAsFactors = FALSE
 )
+
+# DESeq2 requires categorical design variables to be factors.
+Meta_data$SampleType <- factor(
+  Meta_data$SampleType,
+  levels = c("Normal", "Tumor")
+)
+
+# Confirm metadata and count matrix contain the same samples in the same order.
+stopifnot(identical(rownames(Meta_data), colnames(mRNA_Raw)))
+stopifnot(!anyDuplicated(rownames(Meta_data)))
 
 View(Meta_data)
 
@@ -549,8 +571,11 @@ colData(db)
 design(db)
 
 
+# Estimate size factors before transformation.
+d2 <- estimateSizeFactors(d1)
+
 # rlog Transformation
-data_rlogd1 <- rlogTransformation(d1)
+data_rlogd1 <- rlogTransformation(d2, blind = TRUE)
 
 library(SummarizedExperiment)
 
@@ -574,7 +599,6 @@ write.table(
 
 library(DESeq2)
 
-d2 <- estimateSizeFactors(d1)
 d3 <- DESeq(d2)
 
 deseq_result <- results(d3, pAdjustMethod = "fdr")
