@@ -15,7 +15,11 @@ library(ggplot2)
 
 
 # 2. Set Working Directory
-setwd("my project directory")
+# Open this script from the project folder in RStudio, or set the
+# working directory to the project folder before running the script.
+project_dir <- getwd()
+gdc_dir <- file.path(project_dir, "GDCdata")
+dir.create(gdc_dir, showWarnings = FALSE, recursive = TRUE)
 
 
 ################################################################################
@@ -157,7 +161,7 @@ query_TCGA_2 <- GDCquery(
 GDCdownload(
   query_TCGA_2,
   method = "api",
-  directory = "D:/TCGA_BRCA",
+  directory = gdc_dir,
   files.per.chunk = 8
 )
 
@@ -168,7 +172,7 @@ GDCdownload(
 
 data_prepare <- GDCprepare(
   query_TCGA_2,
-  directory = "D:/TCGA_BRCA",
+  directory = gdc_dir,
   save = TRUE,
   save.filename = "data.rda"
 )
@@ -186,7 +190,12 @@ dim(data_prepare)
 # 15. Extract Raw Gene Expression Counts
 ################################################################################
 
-data <- assay(data_prepare)
+# Use unstranded raw counts when that assay is available.
+if ("unstranded" %in% assayNames(data_prepare)) {
+  data <- assay(data_prepare, "unstranded")
+} else {
+  data <- assay(data_prepare)
+}
 
 View(data)
 dim(data)
@@ -209,56 +218,29 @@ write.table(
 # 17. Create Gene Annotation File
 ################################################################################
 
-# Read one downloaded STAR Counts file.
-# The object 'files' must contain the downloaded STAR Counts file paths.
-star_annotation <- read.delim(
-  files[1],
-  skip = 1,
-  header = TRUE,
-  sep = "\t",
-  stringsAsFactors = FALSE
-)
+# Extract gene annotation directly from the prepared SummarizedExperiment.
+# This avoids relying on an external 'files' object or machine-specific paths.
+annotation <- as.data.frame(rowData(data_prepare))
 
-# Keep only actual gene records.
-star_annotation <- star_annotation[
-  grepl("^ENSG", star_annotation$gene_id),
-]
+required_annotation_columns <- c("gene_name", "gene_type")
+if (!all(required_annotation_columns %in% colnames(annotation))) {
+  stop(
+    "Expected gene_name and gene_type columns were not found in rowData(data_prepare). ",
+    "Please inspect rowData(data_prepare) and update the annotation step."
+  )
+}
 
-# Extract gene annotation columns.
-annotation <- star_annotation[, c(
-  "gene_id",
-  "gene_name",
-  "gene_type"
-)]
-
-# Set Ensembl IDs as row names.
-rownames(annotation) <- annotation$gene_id
-
-# Match annotation order with the expression matrix.
-annotation <- annotation[rownames(data), ]
+# Match annotation rows to the expression matrix.
+annotation_index <- match(rownames(data), rownames(data_prepare))
+if (anyNA(annotation_index)) {
+  stop("Some expression-matrix genes could not be matched to the annotation.")
+}
+annotation <- annotation[annotation_index, , drop = FALSE]
 
 # Keep gene symbol and biotype.
-annot_df <- annotation[, c("gene_name", "gene_type")]
-
-# Rename annotation columns.
+annot_df <- annotation[, c("gene_name", "gene_type"), drop = FALSE]
 colnames(annot_df) <- c("SYMBOL", "BioType")
-
-# Inspect annotation.
-dim(annot_df)
-head(annot_df)
-
-# Check missing values.
-sum(is.na(annot_df$SYMBOL))
-sum(is.na(annot_df$BioType))
-
-# Export annotation.
-write.table(
-  annot_df,
-  file = "annot_df.txt",
-  quote = FALSE,
-  sep = "\t",
-  col.names = NA
-)
+rownames(annot_df) <- rownames(data)
 
 
 ################################################################################
@@ -454,39 +436,42 @@ ggsave(
 ################################################################################
 # 25. Create Sample Metadata
 ################################################################################
-#metadata
+# Build metadata directly from the count-matrix column names.
+# TCGA barcode sample-type codes: 01 = Primary Tumor; 11 = Solid Tissue Normal.
+sample_barcodes <- colnames(data)
+sample_type_codes <- substr(sample_barcodes, 14, 15)
 
-Selected_samples
-
-read.table("selected samples.txt", header = T, sep = "\t")
-
-Samples_type <- c(rep("Normal",4), rep("Tumor",4))
-
-Meta_data <- data.frame(Selected_samples,Samples_type)
-
-View(Meta_data)
-head(Meta_data)
-
-Meta_data <- data.frame(
-  Sample_ID = Selected_samples$V30,
-  Samples_type = Samples_type
+Samples_type <- ifelse(
+  sample_type_codes == "01", "Tumor",
+  ifelse(sample_type_codes == "11", "Normal", NA_character_)
 )
 
+if (anyNA(Samples_type)) {
+  stop(
+    "One or more sample barcodes could not be classified as tumor (01) or normal (11). ",
+    "Please inspect colnames(data) and the TCGA sample barcodes."
+  )
+}
+
+Meta_data <- data.frame(
+  SampleName = sample_barcodes,
+  SampleType = factor(Samples_type, levels = c("Normal", "Tumor")),
+  row.names = sample_barcodes
+)
+
+# Confirm metadata order matches the expression matrix.
+stopifnot(identical(rownames(Meta_data), colnames(data)))
+
 View(Meta_data)
 head(Meta_data)
 
-colnames(Meta_data) <- c("SampleName","SampleType")
-
-# Match sample order with data
-
-Sample_ID <- substr(colnames(data), 1, 16)
-
-Meta_data <- Meta_data[
-  match(Sample_ID, Meta_data$SampleName),
-]
-
-all(Sample_ID == Meta_data$SampleName)
-write.table(Meta_data,"Metadata.txt", quote = F,sep = "\t",row.names = F)
+write.table(
+  Meta_data,
+  "Metadata.txt",
+  quote = FALSE,
+  sep = "\t",
+  row.names = FALSE
+)
 
 #######################################################################################
 # DEG
@@ -501,18 +486,10 @@ mRNA_df <- read.table(
 
 View(mRNA_df)
 
-# Extract raw counts
-mRNA_Raw <- mRNA_df[, -9:-10]
+# Extract raw counts in the exact metadata order.
+mRNA_Raw <- as.matrix(mRNA_df[, Meta_data$SampleName, drop = FALSE])
+storage.mode(mRNA_Raw) <- "integer"
 View(mRNA_Raw)
-
-# Convert counts to numeric
-mRNA_Raw[,1]
-mRNA_Raw[,1] <- as.numeric(mRNA_Raw[,1])
-
-for (i in 1:ncol(mRNA_Raw)) {
-  mRNA_Raw[,i] <- as.numeric(mRNA_Raw[,i])
-}
-
 
 # Read BRCA1 expression data
 BRCA1_mRNA <- read.table(
@@ -524,17 +501,10 @@ BRCA1_mRNA <- read.table(
 
 View(BRCA1_mRNA)
 
-# Extract BRCA1 raw counts
-BRCA1_Raw <- BRCA1_mRNA[, -9:-10]
+# Extract BRCA1 raw counts in the exact metadata order.
+BRCA1_Raw <- as.matrix(BRCA1_mRNA[, Meta_data$SampleName, drop = FALSE])
+storage.mode(BRCA1_Raw) <- "integer"
 View(BRCA1_Raw)
-
-# Convert counts to numeric
-BRCA1_Raw[,1]
-BRCA1_Raw[,1] <- as.numeric(BRCA1_Raw[,1])
-
-for (i in 1:ncol(BRCA1_Raw)) {
-  BRCA1_Raw[,i] <- as.numeric(BRCA1_Raw[,i])
-}
 
 
 # Read sample metadata
@@ -550,6 +520,10 @@ View(Meta_data)
 
 # DESeq2
 library(DESeq2)
+
+# Confirm count and metadata dimensions and sample order.
+stopifnot(identical(colnames(mRNA_Raw), rownames(Meta_data)))
+stopifnot(all(is.finite(mRNA_Raw)), all(mRNA_Raw >= 0))
 
 # Create DESeqDataSet for all mRNA genes
 d1 <- DESeqDataSetFromMatrix(
@@ -592,10 +566,13 @@ write.table(
 )
 
 # Differential Gene Expression Analysis (DEG)
+# IMPORTANT: This 8-sample subset is for workflow practice only.
+# The small sample size and repeated samples/aliquots from some patients
+# mean this design is not suitable for definitive statistical conclusions.
+# A larger cohort and an appropriately specified patient-aware design are
+# required for a robust analysis.
 
 library(DESeq2)
-
-?results
 
 d2 <- estimateSizeFactors(d1)
 d3 <- DESeq(d2)
@@ -619,17 +596,24 @@ write.table(
 
 # Gene Annotation
 
-DEG <- read.table("DEG mRNA.txt", sep = "\t")
+DEG <- read.table(
+  "DEG mRNA.txt",
+  header = TRUE,
+  sep = "\t",
+  row.names = 1,
+  check.names = FALSE
+)
 View(DEG)
 
-annot_df <- read.table("annot_df.txt", sep = "\t")
-View(annot_df)
-
-rownames(annot_df) <- annot_df[, 1]
-annot_df <- annot_df[, -1]
-
+annot_df <- read.table(
+  "annot_df.txt",
+  header = TRUE,
+  sep = "\t",
+  row.names = 1,
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
 colnames(annot_df) <- c("Symbol", "Biotype")
-
 View(annot_df)
 
 # Annotation Function
