@@ -587,7 +587,7 @@ write.table(
   "d1 rlog.txt",
   quote = FALSE,
   sep = "\t",
-  row.names = FALSE
+  col.names = NA
 )
 
 # Differential Gene Expression Analysis (DEG)
@@ -682,3 +682,254 @@ write.table(
   quote = F,
   sep = "\t"
 )
+
+################################################################################
+# 26. Read rlog-Transformed Data
+################################################################################
+
+data_rlog_df <- read.table(
+  "d1 rlog.txt",
+  header = TRUE,
+  sep = "\t",
+  row.names = 1,
+  check.names = FALSE
+)
+
+
+################################################################################
+# 27. Column Sum Visualization
+################################################################################
+
+test_df <- data_rlog_df
+
+# Calculate column sums
+colsums_list <- colSums(test_df, na.rm = TRUE)
+
+# Extract column names
+name_list <- colnames(test_df)
+
+# Combine results
+colsums_list <- c()
+name_list <- c()
+
+for (k in 1:ncol(test_df)) {
+
+  colsums_list <- append(
+    colsums_list,
+    sum(test_df[, k], na.rm = TRUE)
+  )
+
+  name_list <- append(
+    name_list,
+    colnames(test_df)[k]
+  )
+}
+
+sum_df <- data.frame(name_list, colsums_list)
+
+View(sum_df)
+
+# Bar Plot
+library(ggplot2)
+
+plot <- ggplot(
+  sum_df,
+  aes(x = name_list, y = colsums_list)
+) +
+  geom_bar(stat = "identity", fill = "tomato") +
+  labs(
+    title = "Bar plot",
+    x = "Samples",
+    y = "Sum of rlog Expression"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+plot
+
+ggsave(
+  "rlog d1 plot.png",
+  plot = plot,
+  width = 12,
+  height = 10
+)
+
+
+################################################################################
+# 28. Volcano Plot
+################################################################################
+
+library(EnhancedVolcano)
+
+packageVersion("EnhancedVolcano")
+
+final_result_annot <- read.table(
+  "Final result.txt",
+  sep = "\t",
+  header = TRUE,
+  check.names = FALSE
+)
+
+View(final_result_annot)
+
+colnames(final_result_annot)
+
+top_genes <- as.character(final_result_annot$Symbol[1:10])
+
+View(top_genes)
+
+my_plot <- EnhancedVolcano(
+  final_result_annot,
+  title = "Genes volcano plot",
+  lab = final_result_annot$Symbol,
+  x = "log2FoldChange",
+  y = "pvalue",
+  selectLab = top_genes,
+  xlab = bquote(~log[2]~'Fold change'),
+  pCutoff = 0.01,
+  FCcutoff = 2.0,
+  pointSize = 1.0,
+  labSize = 4.0,
+  labCol = "black",
+  labFace = "bold",
+  boxedLabels = TRUE,
+  colAlpha = 4/5,
+  legendPosition = "right",
+  legendLabSize = 14,
+  legendIconSize = 4.0,
+  drawConnectors = FALSE,
+  widthConnectors = 1.0,
+  colConnectors = "black"
+)
+
+my_plot
+
+ggsave(
+  "genes volcanoplot.png",
+  plot = my_plot,
+  width = 12,
+  height = 10
+)
+
+
+################################################################################
+# 29. Heatmap
+################################################################################
+
+library(pheatmap)
+
+# Keep original rlog data
+norm_data <- data_rlog_df
+
+# Select top 100 genes
+top_genes <- rownames(final_result_annot)[1:100]
+
+# Match gene IDs
+matched_genes <- intersect(
+  top_genes,
+  rownames(norm_data)
+)
+
+# Extract matched expression data
+top_genes_count <- norm_data[
+  matched_genes,
+  ,
+  drop = FALSE
+]
+
+# Gene annotation
+gene_names_2 <- annot_fx(
+  rownames(top_genes_count)
+)
+
+# Assign unique gene symbols
+rownames(top_genes_count) <- make.unique(
+  as.character(gene_names_2)
+)
+
+# Check dimensions
+dim(top_genes_count)
+
+View(top_genes_count)
+
+# Rename sample columns for visualization
+colnames(top_genes_count) <- c(
+  "Tumor-1", "Tumor-2", "Tumor-3", "Tumor-4",
+  "Normal-1", "Normal-2", "Normal-3", "Normal-4"
+)
+
+table(Meta_data$SampleType)
+
+# Heatmap
+library(gplots)
+library(pheatmap)
+
+Heat_plot <- pheatmap(
+  top_genes_count,
+  color = greenred(256),
+  fontsize = 8,
+  cellwidth = 160,
+  cellheight = 12,
+  angle_col = 45,
+  main = "Top Genes",
+  fontsize_row = 12,
+  fontsize_col = 15,
+  filename = "Heatmap.png",
+  width = 10,
+  height = 10
+)
+
+Heat_plot
+
+
+################################################################################
+# 30. PCA Plot
+################################################################################
+
+library(ggplot2)
+
+# Keep original rlog data
+norm_data <- data_rlog_df
+
+# Match metadata order with expression data
+Meta_data <- Meta_data[
+  match(colnames(norm_data), rownames(Meta_data)),
+  ,
+  drop = FALSE
+]
+
+stopifnot(!anyNA(Meta_data$SampleType))
+
+pc <- prcomp(t(norm_data))
+
+Group <- Meta_data$SampleType
+
+pcr <- data.frame(
+  pc$x[, 1:3],
+  Group = Group
+)
+
+PCA_plot <- ggplot(
+  pcr,
+  aes(PC1, PC2, color = Group)
+) +
+  geom_point(size = 3)
+
+PCA_plot
+
+ggsave(
+  "PCA plot.png",
+  plot = PCA_plot,
+  width = 7,
+  height = 6
+)
+
+
+################################################################################
+# End of Visualization
+################################################################################
